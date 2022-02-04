@@ -3,11 +3,34 @@
     <template v-slot:header>
       <div class="flex items-center justify-between">
         <h1 class="text-3xl font-bold text-gray-900">
-          {{ model.id ? model.title : "Create a Survey" }}
+          {{ route.params.id ? model.title : "Create a Survey" }}
         </h1>
+        <button
+          v-if="route.params.id"
+          type="button"
+          @click="deleteSurvey()"
+          class="py-2 px-3 text-white bg-red-500 rounded-md hover:bg-red-600"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5 -mt-1 inline-block"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+            />
+          </svg>
+          Delete Survey
+        </button>
       </div>
     </template>
-    <form @submit.prevent="saveSurvey">
+    <div v-if="surveyLoading" class="flex justify-center">Loading...</div>
+    <form v-else @submit.prevent="saveSurvey">
       <div class="shadow sm:rounded-md sm:overflow-hiden">
         <!-- Survey Fields -->
         <div class="px-4 py-5 bg-white space-y-6 sm:p-6">
@@ -277,34 +300,44 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import store from "../store";
 import { useRoute, useRouter } from "vue-router";
 import PageComponent from "../components/PageComponent.vue";
 import QuestionEditor from "../components/editor/QuestionEditor.vue";
-import {v4 as uuidv4} from "uuid"; 
+import { v4 as uuidv4 } from "uuid";
 
 const route = useRoute();
 const router = useRouter();
 const surveys = computed(() => store.state.surveys);
+const surveyLoading = computed(() => store.state.currentSurvey.loading);
 
 // New survey model
 let model = ref({
   title: "",
   status: false,
   description: null,
-  image: null,
+  image_url: null,
   expire_date: null,
   questions: [],
 });
 
+// Watch to current survey data change and when this happens we update local model
+watch(
+  () => store.state.currentSurvey.data,
+  (newVal, oldVal) => {
+    model.value = {
+      ...JSON.parse(JSON.stringify(newVal)),
+      status: newVal.status !== "draft",
+    };
+  }
+);
+
 if (route.params.id) {
-  model.value = store.state.surveys.find(
-    (s) => s.id === parseInt(route.params.id)
-  );
+  store.dispatch("getSurvey", route.params.id);
 }
 
-function onImageChoose (ev) {
+function onImageChoose(ev) {
   const file = ev.target.files[0];
   const reader = new FileReader();
   reader.onload = () => {
@@ -321,14 +354,12 @@ function addQuestion(index) {
     question: "",
     description: null,
     data: {},
-  }
+  };
   model.value.questions.splice(index, 0, newQuestion);
 }
 
 function deleteQuestion(question) {
-  model.value.questions = model.value.questions.filter(
-    (q) => q !== question
-  );
+  model.value.questions = model.value.questions.filter((q) => q !== question);
 }
 
 function questionChange(question) {
@@ -341,23 +372,23 @@ function questionChange(question) {
 }
 
 function saveSurvey() {
-  store.dispatch("saveSurvey", model.value).then(({data}) => {
+  store.dispatch("saveSurvey", model.value).then(({ data }) => {
     console.log("id: " + data.data.id);
     router.push({
       name: "SurveyView",
-      params: {id: data.data.id},
+      params: { id: data.data.id },
     });
   });
   console.log(model.value.title, model.value.description);
 }
 
-function deleteSurvey(survey) {
-  if (
-    confirm(
-      `Are your sure you want to delete this survey? Operation can't be reverted!`
-    )
-  ) {
-    // implement delete survey
+function deleteSurvey() {
+  if (confirm(`Are you sure you want to delete this survey? This operation is irreversible`)) {
+    store.dispatch("deleteSurvey", model.value.id).then(() => {
+      router.push({
+        name: "Surveys",
+      });
+    });
   }
 }
 </script>
